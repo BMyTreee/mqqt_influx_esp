@@ -35,10 +35,14 @@ The script (run as root):
 
 ## data model
 
-One measurement, written via line protocol:
+One measurement. Tag keys `node_id`, `topic`. Numeric fields `temp`,
+`hum` (so Grafana can aggregate them directly), plus the raw MQTT payload
+kept as the string field `payload` for capture:
 
 ```
-readings,node_id=<mac>,topic=<escaped_topic> payload="<json>" <ts_ns>
+readings,node_id=<mac>,topic=<topic> temp=<float>,hum=<float>,payload="<json>" <ts_ns>
 ```
 
-`payload` is the raw MQTT payload serialized as a JSON string field.
+Field order in the wire is unspecified (the influxdb3 crate builds the
+fields set as a `HashMap`), but that is invisible to InfluxDB and Grafana.
+Numeric fields are only written when the JSON actually carries them.
