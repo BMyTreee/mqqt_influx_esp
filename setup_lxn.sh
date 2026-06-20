@@ -91,7 +91,7 @@ install_influx() {
         log "adding InfluxData apt repo"
         local keyring="/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg"
         local keyurl="https://repos.influxdata.com/influxdata-archive_compat.key"
-        local keysha="393e8779c89ac8d958f81f948f9ad2fb460cb31dc24941548858a7da1b1dbce1"
+        local keysha="393e8779c89ac8d958f81f942f9ad7fb82a25e133faddaf92e15b16e6ac9ce4c"
         wget -qO /tmp/influxdata-archive_compat.key "${keyurl}"
         echo "${keysha}  /tmp/influxdata-archive_compat.key" | sha256sum -c -
         cat /tmp/influxdata-archive_compat.key | gpg --dearmor | tee "${keyring}" >/dev/null
