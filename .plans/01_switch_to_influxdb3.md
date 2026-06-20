@@ -53,6 +53,14 @@ systemd service.
      `WRITE_PATH` and the `Bearer` header in `src/db.rs` (2-line fix).
 
 ## follow-ups / open questions
+- **Python 3.13 runtime dependency:** the influxdb3 3.10.0 binary is dynamically
+  linked against `libpython3.13.so.1.0`, which Debian 12 does NOT ship (it has
+  3.11). `ensure_python313()` builds Python 3.13 from source (pinned
+  `PYTHON_VERSION="3.13.1"`) with `--enable-shared` so `libpython3.13.so.1.0`
+  lands in `/usr/local/lib` and `ldconfig` resolves it. ~3–5 min compile, skipped
+  on re-runs. If a future influxdb3 release drops the Python link, this step can
+  be removed. Alternative if the build ever breaks: run the `influxdb:3-core`
+  Docker image instead (bundles Python).
 - v3 Core has no fixed-size string-field limit like v2's ~64 KB, but very large
   JSON payloads still bloat the Parquet files; current ESP readings are tiny.
 - Whole JSON stored as one string field — fine for raw capture, bad for per-sensor

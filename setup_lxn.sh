@@ -15,6 +15,7 @@ readonly HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SESSION_NAME="influx_lxn"
 readonly TOKEN_FILE="/root/.influx_lxn_token"
 readonly INFLUXDB3_VERSION="3.10.0"
+readonly PYTHON_VERSION="3.13.1"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 log() { printf '\033[1;32m[setup]\033[0m %s\n' "$*"; }
@@ -79,6 +80,28 @@ install_deps() {
     log "installing build-essential, curl, pkg-config, tmux via apt"
     apt-get update
     apt-get install -y build-essential curl pkg-config tmux gnupg wget
+}
+
+# ── build Python 3.13 (influxdb3 3.10 is linked against libpython3.13) ───────
+ensure_python313() {
+    if ldconfig -p | grep -q 'libpython3.13.so.1.0'; then
+        log "libpython3.13 already available, skipping build"
+        return
+    fi
+    log "building Python ${PYTHON_VERSION} from source (provides libpython3.13.so.1.0)"
+    apt-get install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
+        libsqlite3-dev libffi-dev libncursesw5-dev xz-utils tk-dev \
+        libgdbm-dev liblzma-dev
+    local tgz="/tmp/Python-${PYTHON_VERSION}.tgz"
+    local src="/tmp/Python-${PYTHON_VERSION}"
+    curl -fsSL "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" -o "${tgz}"
+    tar -xzf "${tgz}" -C /tmp
+    ( cd "${src}" && ./configure --enable-shared --prefix=/usr/local \
+        LDFLAGS="-Wl,-rpath=/usr/local/lib" && make -j"$(nproc)" && make install )
+    ldconfig
+    rm -rf "${src}" "${tgz}"
+    ldconfig -p | grep -q 'libpython3.13.so.1.0' \
+        || die "libpython3.13 still missing after build"
 }
 
 # ── install + start InfluxDB 3 Core from official binary ─────────────────────
@@ -269,6 +292,7 @@ main() {
     preflight
     open_local_ssh
     install_deps
+    ensure_python313
     install_influx
     setup_influx
     ensure_rust
