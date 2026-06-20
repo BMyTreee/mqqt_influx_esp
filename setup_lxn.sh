@@ -70,6 +70,12 @@ open_local_ssh() {
 
 # ── install C toolchain + tmux + curl via apt ────────────────────────────────
 install_deps() {
+    # we switched to the InfluxDB 3 binary tarball and no longer use the
+    # InfluxData apt repo — purge any sources/keyring left by an earlier
+    # v2-style run, otherwise `apt-get update` aborts on the stale GPG error.
+    rm -f /etc/apt/sources.list.d/influxdata.list
+    rm -f /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+
     log "installing build-essential, curl, pkg-config, tmux via apt"
     apt-get update
     apt-get install -y build-essential curl pkg-config tmux gnupg wget
