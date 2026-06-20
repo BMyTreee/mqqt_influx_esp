@@ -35,6 +35,12 @@ systemd service.
 - write query params: `org`/`bucket` → `db`; auth header `Token` → `Bearer`.
 - line-protocol building / escaping / `Reading` struct: unchanged.
 
+> **Superseded by `02_use_influxdb3_crate.md`:** the raw-HTTP `reqwest`
+> implementation described here was replaced by the `influxdb3` crate. The
+> endpoint/auth/line-protocol details below remain valid as a description of
+> what the crate does under the hood, but the code no longer builds the
+> request by hand. The end-to-end checkpoints in this file still apply.
+
 ### `README.md`
 - v2 → 3 Core throughout; env table updated; setup step text updated.
 
