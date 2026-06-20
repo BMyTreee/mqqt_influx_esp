@@ -5,7 +5,7 @@ use db::insert_reading;
 use mqtt::listener_mac;
 use tracing::{info, warn};
 
-const MQTT_PORT_DEFAULT: u16 = 1883;
+const MQTT_PORT_DEFAULT: u16 = 1884;
 const MQTT_TOPIC_DEFAULT: &str = "mini_c3/sensor";
 
 #[tokio::main]
