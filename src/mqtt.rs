@@ -1,6 +1,7 @@
 use rumqttc::{Client, Event, MqttOptions, Packet, QoS};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tracing::{info, warn};
 
 use crate::db::Reading;
 
@@ -29,12 +30,24 @@ pub fn run(host: String, port: u16, topic: String, listener_id: String) -> MqttH
         options.set_keep_alive(Duration::from_secs(KEEP_ALIVE_SECS));
 
         let (client, mut connection) = Client::new(options, QUEUE_CAP);
-        client.subscribe(&topic, QoS::AtLeastOnce).unwrap();
+        if let Err(e) = client.subscribe(&topic, QoS::AtLeastOnce) {
+            warn!(error = ?e, topic = %topic, "subscribe failed, listener thread exiting");
+            return;
+        }
 
-        println!("listen_{listener_id} on {topic}");
+        info!(topic = %topic, "listening");
 
         for event in connection.iter() {
-            let Ok(Event::Incoming(Packet::Publish(publish))) = event else {
+            // surface connection errors instead of swallowing them silently —
+            // a v4/v5 broker mismatch shows up here as repeated connection errors
+            let event = match event {
+                Ok(e) => e,
+                Err(e) => {
+                    warn!(error = ?e, "mqtt connection error");
+                    continue;
+                }
+            };
+            let Event::Incoming(Packet::Publish(publish)) = event else {
                 continue;
             };
 
@@ -51,6 +64,8 @@ pub fn run(host: String, port: u16, topic: String, listener_id: String) -> MqttH
                 break;
             }
         }
+
+        warn!("mqtt event stream ended");
     });
 
     MqttHandle { rx }
