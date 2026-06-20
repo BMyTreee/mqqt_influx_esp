@@ -144,6 +144,12 @@ EOF
         fi
         sleep 1
     done
+
+    # surface why it failed instead of dying blind
+    log "influxdb3 not healthy — recent journal:"
+    journalctl -u influxdb3 --no-pager -n 60 2>&1 | tail -n 60
+    log "influxdb3 unit status:"
+    systemctl status influxdb3 --no-pager --full 2>&1 | tail -n 20
     die "influxdb3 did not become healthy"
 }
 
