@@ -5,6 +5,7 @@ use tracing::{info, warn};
 
 use crate::db::Reading;
 
+const CLIENT_ID_PREFIX: &str = "influx_";
 const KEEP_ALIVE_SECS: u64 = 5;
 const QUEUE_CAP: usize = 10;
 const CHANNEL_CAP: usize = 256;
@@ -26,7 +27,7 @@ pub fn run(host: String, port: u16, topic: String, listener_id: String) -> MqttH
     let (tx, rx) = mpsc::channel(CHANNEL_CAP);
 
     std::thread::spawn(move || {
-        let mut options = MqttOptions::new(format!("listen_{listener_id}"), host, port);
+        let mut options = MqttOptions::new(format!("{CLIENT_ID_PREFIX}{listener_id}"), host, port);
         options.set_keep_alive(Duration::from_secs(KEEP_ALIVE_SECS));
 
         let (client, mut connection) = Client::new(options, QUEUE_CAP);
