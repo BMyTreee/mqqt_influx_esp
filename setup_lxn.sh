@@ -49,7 +49,7 @@ prompt INFLUX_DATABASE "InfluxDB database"
 MQTT_HOST="${MQTT_HOST:-127.0.0.1}"
 prompt MQTT_HOST "MQTT host"
 
-MQTT_PORT="${MQTT_PORT:-1884}"
+MQTT_PORT="${MQTT_PORT:-1883}"
 prompt MQTT_PORT "MQTT port"
 
 MQTT_TOPIC="${MQTT_TOPIC:-mini_c3/sensor}"
