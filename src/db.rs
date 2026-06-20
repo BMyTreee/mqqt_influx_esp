@@ -7,7 +7,7 @@ use tracing::{info, warn};
 const CONNECT_RETRIES: u32 = 10;
 const RETRY_DELAY_SECS: u64 = 3;
 const HEALTH_PATH: &str = "/health";
-const WRITE_PATH: &str = "/api/v2/write";
+const WRITE_PATH: &str = "/api/v3/write/lp";
 const PRECISION: &str = "ns";
 const MEASUREMENT: &str = "readings";
 const NODE_TAG: &str = "node_id";
@@ -22,16 +22,14 @@ pub struct Reading {
 
 pub struct Influx {
     url: String,
-    org: String,
-    bucket: String,
+    database: String,
     token: String,
     client: reqwest::Client,
 }
 
 pub async fn connect() -> Result<Influx, Box<dyn std::error::Error>> {
     let url = std::env::var("INFLUX_URL").expect("INFLUX_URL not set");
-    let org = std::env::var("INFLUX_ORG").expect("INFLUX_ORG not set");
-    let bucket = std::env::var("INFLUX_BUCKET").expect("INFLUX_BUCKET not set");
+    let database = std::env::var("INFLUX_DATABASE").expect("INFLUX_DATABASE not set");
     let token = std::env::var("INFLUX_TOKEN").expect("INFLUX_TOKEN not set");
     let client = reqwest::Client::builder().build()?;
 
@@ -45,8 +43,7 @@ pub async fn connect() -> Result<Influx, Box<dyn std::error::Error>> {
                 info!(attempt, "influx connected");
                 return Ok(Influx {
                     url: base,
-                    org,
-                    bucket,
+                    database,
                     token,
                     client,
                 });
@@ -68,12 +65,8 @@ pub async fn insert_reading(influx: &Influx, r: &Reading) -> Result<(), reqwest:
     influx
         .client
         .post(endpoint)
-        .query(&[
-            ("org", influx.org.as_str()),
-            ("bucket", influx.bucket.as_str()),
-            ("precision", PRECISION),
-        ])
-        .header("Authorization", format!("Token {}", influx.token))
+        .query(&[("db", influx.database.as_str()), ("precision", PRECISION)])
+        .header("Authorization", format!("Bearer {}", influx.token))
         .header("Content-Type", "text/plain; charset=utf-8")
         .header("Accept", "application/json")
         .body(line)

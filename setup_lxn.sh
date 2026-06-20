@@ -3,7 +3,7 @@
 # Bootstrap mqqt_influx_esp on THIS host (run locally on lxn after git clone).
 #   1. open local sshd for password access
 #   2. install build deps + tmux via apt
-#   3. install + start InfluxDB v2 locally, run initial setup (org/bucket/token)
+#   3. install + start InfluxDB 3 Core locally, create admin token + database
 #   4. ensure Rust toolchain
 #   5. write .env with InfluxDB + MQTT endpoints
 #   6. cargo build --release
@@ -14,6 +14,7 @@ set -euo pipefail
 readonly HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SESSION_NAME="influx_lxn"
 readonly TOKEN_FILE="/root/.influx_lxn_token"
+readonly INFLUXDB3_VERSION="3.10.0"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 log() { printf '\033[1;32m[setup]\033[0m %s\n' "$*"; }
@@ -36,22 +37,13 @@ prompt() {
 
 # ── runtime prompts (hardcoded default, customize at runtime) ────────────────
 INFLUX_HOST="${INFLUX_HOST:-127.0.0.1}"
-INFLUX_PORT="${INFLUX_PORT:-8086}"
+prompt INFLUX_HOST "InfluxDB host"
 
-INFLUX_USER="${INFLUX_USER:-admin}"
-prompt INFLUX_USER "InfluxDB admin user"
+INFLUX_PORT="${INFLUX_PORT:-8181}"
+prompt INFLUX_PORT "InfluxDB port"
 
-INFLUX_PASSWORD="${INFLUX_PASSWORD:-lxn_influx_pw}"
-prompt INFLUX_PASSWORD "InfluxDB admin password" silent
-
-INFLUX_ORG="${INFLUX_ORG:-lxn}"
-prompt INFLUX_ORG "InfluxDB org"
-
-INFLUX_BUCKET="${INFLUX_BUCKET:-listen_lxn}"
-prompt INFLUX_BUCKET "InfluxDB bucket"
-
-INFLUX_TOKEN="${INFLUX_TOKEN:-lxn-$(date +%s)-local-token}"
-prompt INFLUX_TOKEN "InfluxDB admin token" silent
+INFLUX_DATABASE="${INFLUX_DATABASE:-listen_lxn}"
+prompt INFLUX_DATABASE "InfluxDB database"
 
 MQTT_HOST="${MQTT_HOST:-127.0.0.1}"
 prompt MQTT_HOST "MQTT host"
@@ -83,65 +75,99 @@ install_deps() {
     apt-get install -y build-essential curl pkg-config tmux gnupg wget
 }
 
-# ── install + start InfluxDB v2 from official repo ──────────────────────────
+# ── install + start InfluxDB 3 Core from official binary ─────────────────────
 install_influx() {
-    if command -v influxd >/dev/null 2>&1; then
-        log "influxd already installed, skipping"
+    if command -v influxdb3 >/dev/null 2>&1; then
+        log "influxdb3 already installed, skipping"
     else
-        log "adding InfluxData apt repo"
-        local keyring="/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg"
-        local keyurl="https://repos.influxdata.com/influxdata-archive_compat.key"
-        local keysha="393e8779c89ac8d958f81f942f9ad7fb82a25e133faddaf92e15b16e6ac9ce4c"
-        wget -qO /tmp/influxdata-archive_compat.key "${keyurl}"
-        echo "${keysha}  /tmp/influxdata-archive_compat.key" | sha256sum -c -
-        cat /tmp/influxdata-archive_compat.key | gpg --dearmor | tee "${keyring}" >/dev/null
-        echo "deb [signed-by=${keyring}] https://repos.influxdata.com/debian stable main" \
-            > /etc/apt/sources.list.d/influxdata.list
-        apt-get update
-        apt-get install -y influxdb2 influxdb2-cli
-    fi
-    log "enabling + starting influxdb"
-    systemctl enable influxdb >/dev/null
-    systemctl restart influxdb
+        local artifact
+        case "$(uname -m)" in
+            x86_64|amd64)   artifact="linux_amd64" ;;
+            aarch64|arm64)  artifact="linux_arm64" ;;
+            *) die "unsupported architecture for influxdb3: $(uname -m)" ;;
+        esac
 
-    log "waiting for influxdb health endpoint"
+        local url="https://dl.influxdata.com/influxdb/releases/influxdb3-core-${INFLUXDB3_VERSION}_${artifact}.tar.gz"
+        local tmp="/tmp/influxdb3-core.tar.gz"
+        log "downloading influxdb3 core ${INFLUXDB3_VERSION} (${artifact})"
+        curl -fsSL "${url}"     -o "${tmp}"
+        curl -fsSL "${url}.sha256" -o "${tmp}.sha256"
+
+        # supply-chain pin: verify the tarball against the published sha256 sidecar
+        local dl_sha ch_sha
+        dl_sha="$(cut -d ' ' -f 1 "${tmp}.sha256" | grep -E '^[0-9a-f]{64}$')"
+        [[ -n "${dl_sha}" ]] || die "no valid sha256 in ${url}.sha256"
+        ch_sha="$(sha256sum "${tmp}" | cut -d ' ' -f 1)"
+        [[ "${ch_sha}" = "${dl_sha}" ]] \
+            || die "influxdb3 checksum mismatch: ${ch_sha} != ${dl_sha}"
+
+        # tarball layout varies across releases; extract then move the binary
+        local xdir="/tmp/influxdb3-extract"
+        rm -rf "${xdir}"; mkdir -p "${xdir}"
+        tar -xf "${tmp}" -C "${xdir}"
+        install -m 0755 "$(find "${xdir}" -name influxdb3 -type f | head -n1)" /usr/local/bin/influxdb3
+        rm -rf "${xdir}" "${tmp}" "${tmp}.sha256"
+    fi
+
+    log "writing influxdb3 systemd unit"
+    mkdir -p /var/lib/influxdb3
+    cat > /etc/systemd/system/influxdb3.service <<EOF
+[Unit]
+Description=InfluxDB 3 Core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/influxdb3 serve --node-id=node0 --http-bind=0.0.0.0:${INFLUX_PORT} --object-store=file --data-dir=/var/lib/influxdb3
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable influxdb3 >/dev/null
+    systemctl restart influxdb3
+
+    log "waiting for influxdb3 health endpoint"
     local i
     for ((i = 0; i < 60; i++)); do
         if curl -sf "http://${INFLUX_HOST}:${INFLUX_PORT}/health" >/dev/null; then
-            log "influxdb healthy"
+            log "influxdb3 healthy"
             return
         fi
         sleep 1
     done
-    die "influxdb did not become healthy"
+    die "influxdb3 did not become healthy"
 }
 
-# ── run initial InfluxDB setup once; persist token so re-runs are stable ─────
+# ── create / reuse admin token + database (idempotent) ───────────────────────
 setup_influx() {
-    local allowed
-    allowed="$(curl -sf "http://${INFLUX_HOST}:${INFLUX_PORT}/api/v2/setup" | grep -o '"allowed":[a-z]*' | cut -d: -f2)"
-    if [[ "${allowed}" == "true" ]]; then
-        log "running initial influxdb setup"
-        influx setup \
-            --host "http://${INFLUX_HOST}:${INFLUX_PORT}" \
-            --username "${INFLUX_USER}" \
-            --password "${INFLUX_PASSWORD}" \
-            --org "${INFLUX_ORG}" \
-            --bucket "${INFLUX_BUCKET}" \
-            --token "${INFLUX_TOKEN}" \
-            --force
+    if [[ -f "${TOKEN_FILE}" ]]; then
+        INFLUX_TOKEN="$(cat "${TOKEN_FILE}")"
+        log "reusing influxdb3 token from ${TOKEN_FILE}"
+    else
+        log "creating influxdb3 admin token"
+        local resp code body
+        resp="$(curl -s -w '\n%{http_code}' -X POST "http://${INFLUX_HOST}:${INFLUX_PORT}/api/v3/configure/token/admin")"
+        code="$(printf '%s' "${resp}" | tail -n1)"
+        body="$(printf '%s' "${resp}" | sed '$d')"
+        if [[ "${code}" = "409" ]]; then
+            die "admin token already exists but ${TOKEN_FILE} is missing — cannot recover token. Reset with 'rm -rf /var/lib/influxdb3' or provide INFLUX_TOKEN."
+        fi
+        INFLUX_TOKEN="$(printf '%s' "${body}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)"
+        [[ -n "${INFLUX_TOKEN}" ]] || die "could not parse admin token from response: ${body}"
         echo -n "${INFLUX_TOKEN}" > "${TOKEN_FILE}"
         chmod 600 "${TOKEN_FILE}"
-        log "token saved to ${TOKEN_FILE}"
-    else
-        log "influxdb already set up"
-        if [[ -f "${TOKEN_FILE}" ]]; then
-            INFLUX_TOKEN="$(cat "${TOKEN_FILE}")"
-            log "reusing token from ${TOKEN_FILE}"
-        else
-            log "no saved token file — using prompted INFLUX_TOKEN"
-        fi
+        log "admin token saved to ${TOKEN_FILE}"
     fi
+
+    # v3 auto-creates the database on first write; this is best-effort and non-fatal
+    log "ensuring database '${INFLUX_DATABASE}'"
+    influxdb3 create database "${INFLUX_DATABASE}" \
+        --host "http://${INFLUX_HOST}:${INFLUX_PORT}" \
+        --token "${INFLUX_TOKEN}" 2>/dev/null \
+        || log "database create skipped (already exists or auto-creates on write)"
 }
 
 # ── ensure rust ──────────────────────────────────────────────────────────────
@@ -165,8 +191,7 @@ write_env() {
     log "writing ${HERE}/.env"
     cat > "${HERE}/.env" <<EOF
 INFLUX_URL=http://${INFLUX_HOST}:${INFLUX_PORT}
-INFLUX_ORG=${INFLUX_ORG}
-INFLUX_BUCKET=${INFLUX_BUCKET}
+INFLUX_DATABASE=${INFLUX_DATABASE}
 INFLUX_TOKEN=${INFLUX_TOKEN}
 
 MQTT_HOST=${MQTT_HOST}
