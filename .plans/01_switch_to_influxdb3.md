@@ -61,6 +61,12 @@ systemd service.
   on re-runs. If a future influxdb3 release drops the Python link, this step can
   be removed. Alternative if the build ever breaks: run the `influxdb:3-core`
   Docker image instead (bundles Python).
+- **`/health` requires a token in 3.10** (returns 401 `MissingToken` on every
+  endpoint, including `/health`). `install_influx()` health loop now accepts
+  `200` OR `401` as "up". `db::connect()` sends `Authorization: Bearer <token>`
+  on its `/health` ping so the token is validated before the first write.
+  Bootstrap still works: `POST /api/v3/configure/token/admin` is the one
+  unauthenticated endpoint.
 - v3 Core has no fixed-size string-field limit like v2's ~64 KB, but very large
   JSON payloads still bloat the Parquet files; current ESP readings are tiny.
 - Whole JSON stored as one string field — fine for raw capture, bad for per-sensor

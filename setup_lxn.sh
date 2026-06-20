@@ -159,10 +159,13 @@ EOF
     systemctl restart influxdb3
 
     log "waiting for influxdb3 health endpoint"
-    local i
+    local i code
     for ((i = 0; i < 60; i++)); do
-        if curl -sf "http://${INFLUX_HOST}:${INFLUX_PORT}/health" >/dev/null; then
-            log "influxdb3 healthy"
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://${INFLUX_HOST}:${INFLUX_PORT}/health" 2>/dev/null || echo 000)"
+        # 200 = healthy; 401 = healthy but auth-enforced (3.10 wants a token on
+        # every endpoint, including /health). Either means the HTTP server is up.
+        if [[ "${code}" == "200" || "${code}" == "401" ]]; then
+            log "influxdb3 up (health ${code})"
             return
         fi
         sleep 1

@@ -38,7 +38,7 @@ pub async fn connect() -> Result<Influx, Box<dyn std::error::Error>> {
 
     // InfluxDB may not be up yet (concurrent boot, restart, etc.) — ping until reachable.
     for attempt in 1..=CONNECT_RETRIES {
-        match client.get(&health).send().await {
+        match client.get(&health).bearer_auth(&token).send().await {
             Ok(resp) if resp.status().is_success() => {
                 info!(attempt, "influx connected");
                 return Ok(Influx {
