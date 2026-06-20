@@ -56,10 +56,10 @@ prompt INFLUX_TOKEN "InfluxDB admin token" silent
 MQTT_HOST="${MQTT_HOST:-127.0.0.1}"
 prompt MQTT_HOST "MQTT host"
 
-MQTT_PORT="${MQTT_PORT:-1883}"
+MQTT_PORT="${MQTT_PORT:-1884}"
 prompt MQTT_PORT "MQTT port"
 
-MQTT_TOPIC="${MQTT_TOPIC:-sensors/+/reading}"
+MQTT_TOPIC="${MQTT_TOPIC:-mini_c3/sensor}"
 prompt MQTT_TOPIC "MQTT topic"
 
 # ── preflight ────────────────────────────────────────────────────────────────

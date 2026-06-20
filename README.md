@@ -32,7 +32,7 @@ The script (run as root):
 | `INFLUX_TOKEN`  | admin / write token                      |
 | `MQTT_HOST`     | MQTT broker host                         |
 | `MQTT_PORT`     | MQTT broker port                         |
-| `MQTT_TOPIC`    | topic filter (default `sensors/+/reading`) |
+| `MQTT_TOPIC`    | topic filter (default `mini_c3/sensor`) |
 
 ## data model
 

@@ -4,7 +4,6 @@ use tokio::sync::mpsc;
 
 use crate::db::Reading;
 
-const MQTT_PORT: u16 = 1883;
 const KEEP_ALIVE_SECS: u64 = 5;
 const QUEUE_CAP: usize = 10;
 const CHANNEL_CAP: usize = 256;
@@ -22,11 +21,11 @@ pub struct MqttHandle {
     pub rx: mpsc::Receiver<Reading>,
 }
 
-pub fn run(host: String, topic: String, listener_id: String) -> MqttHandle {
+pub fn run(host: String, port: u16, topic: String, listener_id: String) -> MqttHandle {
     let (tx, rx) = mpsc::channel(CHANNEL_CAP);
 
     std::thread::spawn(move || {
-        let mut options = MqttOptions::new(format!("listen_{listener_id}"), host, MQTT_PORT);
+        let mut options = MqttOptions::new(format!("listen_{listener_id}"), host, port);
         options.set_keep_alive(Duration::from_secs(KEEP_ALIVE_SECS));
 
         let (client, mut connection) = Client::new(options, QUEUE_CAP);
